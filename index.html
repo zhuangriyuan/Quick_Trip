@@ -861,6 +861,7 @@
   let bootedRoot = false;
   let myTripsStarted = false;
   let urlTripAtLoad = null;
+  let isSharedLinkVisit = false;
   let pendingEmail = '';
 
   async function init(){
@@ -870,10 +871,12 @@
 
     const params = new URLSearchParams(location.search);
     urlTripAtLoad = params.get('trip');
+    isSharedLinkVisit = !!urlTripAtLoad;
 
     if(urlTripAtLoad){
       // Share-link visit — open right away, no login required at all.
-      // Access to THIS trip is controlled by the edit-key/view-mode mechanism.
+      // Access to THIS trip is controlled by the edit-key/view-mode mechanism,
+      // and the UI is sandboxed to just this one trip (see renderAuthUI/render).
       const urlKey = params.get('key');
       const forceView = params.get('mode') === 'view';
       if(urlKey) setEditKey(urlTripAtLoad, urlKey);
@@ -934,7 +937,8 @@
   }
 
   function renderAuthUI(){
-    $('tripsBtn').style.display = authUser ? 'flex' : 'none';
+    const showOwnerNav = !!authUser && !isSharedLinkVisit;
+    $('tripsBtn').style.display = showOwnerNav ? 'flex' : 'none';
     $('signOutBtn').style.display = authUser ? 'block' : 'none';
     $('signedInAs').textContent = authUser ? `当前登录：${authUser.email}` : '';
   }
@@ -977,6 +981,7 @@
     $('tripTitle').contentEditable = isViewMode ? 'false' : 'true';
     $('tripDateInput').readOnly = isViewMode;
     $('addStopBtn').style.display = isViewMode ? 'none' : 'flex';
+    $('shareBtn').style.display = (isViewMode || isSharedLinkVisit) ? 'none' : 'flex';
 
     if(isViewMode){
       $('sharedBadgeWrap').innerHTML = `<div class="shared-badge">👀 只读模式，无法编辑</div>`;
