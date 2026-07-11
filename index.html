@@ -1,0 +1,1235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="路书">
+<meta name="theme-color" content="#EEF1F5" id="themeColorMeta">
+<title>路书 · 快速行程规划</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- ============================================================
+  InstantDB 已接入：APP_ID 已经写好在下方脚本里
+  （const APP_ID = "a5876d37-89de-48d5-a4e0-fd826eeca553";）
+  行程数据会自动同步到你自己的 InstantDB 账号，多设备/多人可实时同步。
+  如果以后要换成另一个 InstantDB App，去 instantdb.com/dash 复制新的
+  App ID，替换掉那一行就行。
+=============================================================== -->
+<script src="https://www.unpkg.com/@instantdb/core@latest/dist/standalone/index.umd.cjs"></script>
+
+<style>
+  :root{
+    --bg:#EEF1F5;
+    --paper:#FFFFFF;
+    --ink:#16213E;
+    --ink-soft:#5B6B85;
+    --ink-faint:#94A1B8;
+    --line:#E3E8EF;
+    --accent:#F2542D;
+    --accent-soft:#FBEAE4;
+    --accent-2:#2EC4B6;
+    --accent-2-soft:#E3F8F6;
+    --warn:#E0483A;
+    --warn-soft:#FCEBEA;
+    --radius-lg:20px;
+    --radius-md:14px;
+    --radius-sm:10px;
+    --shadow: 0 4px 18px rgba(22,33,62,0.08);
+    --shadow-lift: 0 10px 30px rgba(22,33,62,0.16);
+  }
+  [data-theme="dark"]{
+    --bg:#10131C;
+    --paper:#1B2130;
+    --ink:#F1F3F8;
+    --ink-soft:#A8B2C7;
+    --ink-faint:#5C6478;
+    --line:#2A3142;
+    --accent:#FF7A52;
+    --accent-soft:#3A2A28;
+    --accent-2:#3DD9C9;
+    --accent-2-soft:#1C3634;
+    --warn:#FF6B5E;
+    --warn-soft:#3A2426;
+    --shadow: 0 4px 18px rgba(0,0,0,0.35);
+    --shadow-lift: 0 10px 30px rgba(0,0,0,0.5);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    min-height:100vh;
+    overscroll-behavior-y:none;
+    transition:background .2s ease, color .2s ease;
+  }
+  svg{display:block;}
+  .display{font-family:'Outfit',sans-serif;}
+  #app{
+    max-width:480px;
+    margin:0 auto;
+    min-height:100vh;
+    background:var(--bg);
+    position:relative;
+    padding-bottom:110px;
+  }
+
+  /* ---------- Setup banner ---------- */
+  .setup-banner{
+    background:#3A2A1E; color:#FFD9B8; font-size:12.5px; padding:10px 16px;
+    display:flex; align-items:center; gap:8px; line-height:1.5;
+  }
+  [data-theme="dark"] .setup-banner{ background:#3A2A1E; }
+  .setup-banner b{color:#FFB067;}
+  .setup-banner .close-x{margin-left:auto; cursor:pointer; opacity:.7; flex:0 0 auto;}
+
+  /* ---------- Header ---------- */
+  header{
+    padding:22px 18px 14px;
+    background:linear-gradient(180deg, var(--bg) 0%, var(--bg) 70%, rgba(238,241,245,0));
+    position:sticky; top:0; z-index:20;
+  }
+  .brand-row{display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;}
+  .brand{display:flex; align-items:center; gap:8px;}
+  .brand .mark{
+    width:30px;height:30px;border-radius:9px;
+    background:var(--ink);
+    display:flex;align-items:center;justify-content:center;
+    color:var(--accent); font-family:'Outfit',sans-serif; font-weight:800; font-size:15px;
+  }
+  .brand .name{font-family:'Outfit',sans-serif; font-weight:700; font-size:14px; letter-spacing:.02em; color:var(--ink-soft);}
+  .icon-btn{
+    width:36px;height:36px;border-radius:12px;
+    border:none; background:var(--paper); box-shadow:var(--shadow);
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer; color:var(--ink-soft);
+  }
+  .header-actions{display:flex; gap:8px;}
+  .shared-badge{
+    display:inline-flex; align-items:center; gap:4px; font-size:11px; color:var(--accent-2);
+    background:var(--accent-2-soft); padding:3px 9px; border-radius:999px; font-weight:600; margin-bottom:8px;
+  }
+
+  .trip-title{
+    font-family:'Outfit',sans-serif; font-weight:700; font-size:26px;
+    line-height:1.15; color:var(--ink); outline:none; word-break:break-word;
+  }
+  .trip-title:empty:before{content:'给行程起个名字'; color:var(--ink-faint);}
+  .trip-sub{color:var(--ink-soft); font-size:13px; margin-top:5px; display:flex; align-items:center; gap:6px;}
+  .trip-sub input{
+    border:none;background:transparent;color:var(--ink-soft);font-size:13px;font-family:'Inter',sans-serif;
+    outline:none; padding:0; width:150px;
+  }
+
+  /* Day pills */
+  .day-pills{
+    display:flex; gap:8px; margin-top:16px; overflow-x:auto; padding-bottom:4px;
+    scrollbar-width:none;
+  }
+  .day-pills::-webkit-scrollbar{display:none;}
+  .day-pill{
+    flex:0 0 auto; padding:9px 16px; border-radius:999px; border:none;
+    background:var(--paper); color:var(--ink-soft); font-weight:600; font-size:13.5px;
+    font-family:'Outfit',sans-serif; box-shadow:var(--shadow); cursor:pointer;
+    display:flex; align-items:center; gap:6px; white-space:nowrap;
+  }
+  .day-pill.active{ background:var(--ink); color:var(--bg); }
+  .day-pill .cnt{
+    font-size:10.5px; opacity:.7; background:rgba(128,128,128,0.18); border-radius:999px; padding:1px 6px;
+  }
+  .day-pill-add{
+    flex:0 0 auto; width:36px;height:36px;border-radius:999px;border:1.5px dashed var(--ink-faint);
+    background:transparent; color:var(--ink-faint); font-size:16px; display:flex;align-items:center;justify-content:center; cursor:pointer;
+  }
+
+  /* ---------- Timeline ---------- */
+  main{padding:6px 18px 10px;}
+  #timelineCapture{ padding-top:8px; background:var(--bg); }
+  .day-meta-row{display:flex; justify-content:space-between; align-items:center; margin:10px 2px 14px;}
+  .day-label-edit{
+    font-family:'Outfit',sans-serif; font-weight:700; font-size:15px; color:var(--ink);
+    border:none; background:transparent; outline:none; width:110px;
+  }
+  .day-remove-btn{
+    border:none;background:none;color:var(--ink-faint); display:flex; align-items:center; gap:4px; cursor:pointer;
+    font-size:12px; padding:6px; border-radius:8px;
+  }
+  .day-remove-btn:hover{color:var(--warn); background:var(--warn-soft);}
+
+  .timeline{position:relative;}
+  .stop-row{position:relative; display:flex; gap:12px; margin-bottom:2px;}
+  .node-col{display:flex; flex-direction:column; align-items:center; width:34px; flex:0 0 34px;}
+  .node{
+    width:34px;height:34px;border-radius:11px;
+    background:var(--ink); color:var(--bg); display:flex;align-items:center;justify-content:center;
+    font-family:'Outfit',sans-serif; font-weight:700; font-size:14px;
+    box-shadow:0 3px 8px rgba(0,0,0,0.25); flex:0 0 auto; z-index:2;
+  }
+  .node.n0{background:var(--accent); color:#fff;}
+  .rail{ width:2.5px; flex:1 1 auto; background:repeating-linear-gradient(var(--ink-faint) 0 6px, transparent 6px 11px); min-height:14px; margin-top:2px;}
+
+  .stop-card{
+    flex:1 1 auto; background:var(--paper); border-radius:var(--radius-md);
+    box-shadow:var(--shadow); padding:13px 14px 11px; margin-bottom:10px; cursor:pointer;
+    min-width:0;
+  }
+  .stop-top{display:flex; align-items:flex-start; justify-content:space-between; gap:8px;}
+  .stop-name-wrap{display:flex; align-items:center; gap:7px; min-width:0;}
+  .stop-emoji{font-size:17px; flex:0 0 auto;}
+  .stop-name{font-family:'Outfit',sans-serif; font-weight:600; font-size:15.5px; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .stop-time{font-size:12px; color:var(--accent); font-weight:700; flex:0 0 auto; font-family:'Outfit',sans-serif;}
+
+  .stop-addr{
+    margin-top:6px; display:flex; align-items:center; gap:5px; color:var(--ink-soft); font-size:12.5px;
+  }
+  .stop-addr span.txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .stop-note{margin-top:6px; font-size:12.5px; color:var(--ink-faint); font-style:italic; line-height:1.4;}
+
+  .stop-actions{display:flex; align-items:center; justify-content:space-between; margin-top:11px; gap:8px;}
+  .map-chip{
+    border:none; background:var(--accent-soft); color:var(--accent); font-weight:700; font-size:12px;
+    padding:7px 12px; border-radius:999px; display:flex; align-items:center; gap:5px; cursor:pointer;
+    font-family:'Inter',sans-serif;
+  }
+  .mini-btns{display:flex; gap:6px;}
+  .mini-btn{
+    width:30px;height:30px;border-radius:9px;border:none;background:var(--bg);color:var(--ink-soft);
+    display:flex;align-items:center;justify-content:center; cursor:pointer;
+  }
+  .mini-btn.danger{color:var(--warn);}
+  .mini-btn.danger:hover{background:var(--warn-soft);}
+  .mini-btn:disabled{opacity:.3; cursor:default;}
+
+  .connector{
+    display:flex; align-items:center; gap:8px; margin:2px 0 10px 46px; cursor:pointer;
+  }
+  .connector-text{
+    font-size:11.5px; color:var(--ink-faint); background:transparent; border:none; display:flex; align-items:center; gap:4px;
+  }
+  .connector-text.has-val{color:var(--accent-2); font-weight:600;}
+
+  .empty-state{
+    text-align:center; padding:50px 20px; color:var(--ink-faint);
+  }
+  .empty-state .big{font-size:36px; margin-bottom:10px;}
+  .empty-state .cta{color:var(--accent); font-weight:700; margin-top:6px; cursor:pointer;}
+
+  /* ---------- FAB ---------- */
+  .fab{
+    position:fixed; left:50%; bottom:24px; transform:translateX(-50%);
+    max-width:480px; width:calc(100% - 36px);
+    display:flex; gap:10px; z-index:30;
+  }
+  .fab button{
+    flex:1 1 auto; border:none; border-radius:16px; padding:15px; font-size:15px;
+    font-family:'Outfit',sans-serif; font-weight:700; cursor:pointer; box-shadow:var(--shadow-lift);
+    display:flex; align-items:center; justify-content:center; gap:8px;
+  }
+  .fab .add-btn{background:var(--ink); color:var(--bg); flex:1.4 1 auto;}
+  .fab .share-btn{background:var(--accent); color:#fff; flex:1 1 auto;}
+
+  /* ---------- Sheet / Modal ---------- */
+  .overlay{
+    position:fixed; inset:0; background:rgba(10,14,24,0.5); z-index:50; opacity:0; pointer-events:none;
+    transition:opacity .18s ease;
+  }
+  .overlay.open{opacity:1; pointer-events:auto;}
+  .sheet{
+    position:fixed; left:50%; bottom:0; transform:translate(-50%, 100%);
+    width:100%; max-width:480px; background:var(--paper);
+    border-radius:22px 22px 0 0; z-index:51; padding:20px 18px calc(24px + env(safe-area-inset-bottom));
+    transition:transform .24s cubic-bezier(.2,.9,.3,1); max-height:86vh; overflow-y:auto;
+  }
+  .sheet.open{transform:translate(-50%, 0);}
+  .sheet-handle{width:36px;height:4px;background:var(--line); border-radius:99px; margin:0 auto 14px;}
+  .sheet h3{font-family:'Outfit',sans-serif; font-size:18px; margin:0 0 16px; color:var(--ink); display:flex; align-items:center; justify-content:space-between;}
+  .field{margin-bottom:14px;}
+  .field label{display:block; font-size:12px; color:var(--ink-soft); font-weight:600; margin-bottom:6px;}
+  .field input, .field textarea{
+    width:100%; border:1.5px solid var(--line); border-radius:12px; padding:11px 13px; font-size:14.5px;
+    font-family:'Inter',sans-serif; color:var(--ink); outline:none; background:var(--bg);
+  }
+  .field input:focus, .field textarea:focus{border-color:var(--accent);}
+  .field textarea{resize:none; min-height:56px;}
+  .emoji-row{display:flex; flex-wrap:wrap; gap:8px;}
+  .emoji-opt{
+    width:38px;height:38px;border-radius:11px;border:1.5px solid var(--line); background:var(--bg);
+    font-size:17px; display:flex;align-items:center;justify-content:center; cursor:pointer;
+  }
+  .emoji-opt.sel{border-color:var(--accent); background:var(--accent-soft);}
+  .sheet-actions{display:flex; gap:10px; margin-top:6px;}
+  .btn{
+    flex:1; border:none; border-radius:13px; padding:13px; font-size:14.5px; font-weight:700;
+    font-family:'Outfit',sans-serif; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;
+  }
+  .btn.primary{background:var(--ink); color:var(--bg);}
+  .btn.ghost{background:var(--bg); color:var(--ink-soft);}
+  .btn.danger-ghost{background:var(--warn-soft); color:var(--warn);}
+
+  .map-sheet-opt{
+    display:flex; align-items:center; gap:12px; padding:14px 6px; border-bottom:1px solid var(--line); cursor:pointer;
+  }
+  .map-sheet-opt:last-of-type{border-bottom:none;}
+  .map-sheet-opt .ic{width:38px;height:38px;border-radius:11px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:18px;}
+  .map-sheet-opt .tx{font-weight:600; font-size:14.5px; color:var(--ink);}
+  .map-sheet-opt .sub{font-size:11.5px;color:var(--ink-faint);}
+
+  .share-opt{
+    display:flex; align-items:center; gap:12px; padding:13px 4px; cursor:pointer; border-bottom:1px solid var(--line);
+  }
+  .share-opt:last-child{border-bottom:none;}
+  .share-opt .ic{width:36px;height:36px;border-radius:10px;background:var(--bg);display:flex;align-items:center;justify-content:center; flex:0 0 auto; color:var(--ink-soft);}
+  .share-opt .tx{font-weight:600; font-size:14px; color:var(--ink);}
+  .share-opt .sub{font-size:11.5px;color:var(--ink-faint); margin-top:1px;}
+  .share-opt .go{margin-left:auto; color:var(--ink-faint);}
+
+  .link-box{
+    display:flex; align-items:center; gap:8px; background:var(--bg); border:1.5px dashed var(--line);
+    border-radius:12px; padding:10px 12px; margin:4px 0 14px;
+  }
+  .link-box .url{font-size:12px; color:var(--ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;}
+  .link-box button{flex:0 0 auto; border:none; background:var(--ink); color:var(--bg); font-weight:700; font-size:12px; padding:8px 12px; border-radius:9px; cursor:pointer; font-family:'Outfit',sans-serif;}
+  .share-hint{font-size:11.5px; color:var(--ink-faint); line-height:1.5; margin:-6px 0 14px;}
+
+  .trip-list-row{
+    display:flex; align-items:center; gap:10px; padding:12px 4px; border-bottom:1px solid var(--line); cursor:pointer;
+  }
+  .trip-list-row:last-of-type{border-bottom:none;}
+  .trip-list-row .dot{width:9px;height:9px;border-radius:50%; background:var(--line); flex:0 0 auto;}
+  .trip-list-row.active .dot{background:var(--accent);}
+  .trip-list-row .info{flex:1; min-width:0;}
+  .trip-list-row .t{font-weight:600; font-size:14px; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .trip-list-row .d{font-size:11.5px; color:var(--ink-faint); margin-top:2px;}
+  .trip-list-row .del{flex:0 0 auto; width:30px;height:30px;border-radius:9px; border:none; background:var(--bg); color:var(--ink-faint); display:flex;align-items:center;justify-content:center; cursor:pointer;}
+  .trip-list-row .del:hover{color:var(--warn); background:var(--warn-soft);}
+  .trip-list-empty{padding:24px 4px; text-align:center; color:var(--ink-faint); font-size:13px;}
+
+  .toast{
+    position:fixed; left:50%; bottom:130px; transform:translateX(-50%);
+    background:var(--ink); color:var(--bg); padding:11px 18px; border-radius:999px; font-size:13px;
+    z-index:80; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; font-weight:600;
+    max-width:85%; text-align:center;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(-6px);}
+
+  ::selection{background:var(--accent-soft);}
+
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none !important; animation:none !important;}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div class="setup-banner" id="setupBanner" style="display:none;">
+    <span>⚠️</span>
+    <span>还没连接数据库：请把代码里的 <b>APP_ID</b> 换成你自己在 instantdb.com 创建的 App ID，否则数据只存在本机、无法真正分享。</span>
+    <span class="close-x" id="setupBannerClose">✕</span>
+  </div>
+
+  <header>
+    <div class="brand-row">
+      <div class="brand">
+        <div class="mark">路</div>
+        <div class="name">路书 · 快速行程</div>
+      </div>
+      <div class="header-actions">
+        <button class="icon-btn" id="tripsBtn" title="我的行程"></button>
+        <button class="icon-btn" id="themeBtn" title="切换主题"></button>
+      </div>
+    </div>
+    <div id="sharedBadgeWrap"></div>
+    <div class="trip-title display" id="tripTitle" contenteditable="true" spellcheck="false"></div>
+    <div class="trip-sub">
+      <span>🗓</span><input id="tripDateInput" placeholder="添加日期，如 7月12日-13日" />
+    </div>
+    <div class="day-pills" id="dayPills"></div>
+  </header>
+
+  <main>
+    <div id="timelineCapture">
+      <div class="day-meta-row">
+        <input class="day-label-edit display" id="dayLabelInput" />
+        <button class="day-remove-btn" id="dayRemoveBtn"></button>
+      </div>
+      <div class="timeline" id="timeline"></div>
+    </div>
+  </main>
+
+  <div class="fab">
+    <button class="add-btn" id="addStopBtn">＋ 添加地点</button>
+    <button class="share-btn" id="shareBtn">分享 ↗</button>
+  </div>
+
+</div>
+
+<div class="overlay" id="overlay"></div>
+
+<!-- Stop edit sheet -->
+<div class="sheet" id="stopSheet">
+  <div class="sheet-handle"></div>
+  <h3 id="stopSheetTitle">添加地点</h3>
+  <div class="field">
+    <label>地点名称</label>
+    <input id="fName" placeholder="例如：西湖·断桥残雪" />
+  </div>
+  <div class="field">
+    <label>详细地址（用于跳转地图，留空则用名称搜索）</label>
+    <input id="fAddr" placeholder="例如：杭州市西湖区北山街" />
+  </div>
+  <div class="field">
+    <label>到达时间（可选）</label>
+    <input id="fTime" placeholder="例如：09:30" />
+  </div>
+  <div class="field">
+    <label>备注（可选）</label>
+    <textarea id="fNote" placeholder="门票、注意事项、想吃的东西……"></textarea>
+  </div>
+  <div class="field">
+    <label>图标</label>
+    <div class="emoji-row" id="emojiRow"></div>
+  </div>
+  <div class="sheet-actions">
+    <button class="btn danger-ghost" id="fDeleteBtn" style="display:none;">删除</button>
+    <button class="btn ghost" id="fCancelBtn">取消</button>
+    <button class="btn primary" id="fSaveBtn">保存</button>
+  </div>
+</div>
+
+<!-- Map choice sheet -->
+<div class="sheet" id="mapSheet">
+  <div class="sheet-handle"></div>
+  <h3>打开地图</h3>
+  <div class="map-sheet-opt" id="openGoogle">
+    <div class="ic">🌐</div>
+    <div><div class="tx">Google 地图</div><div class="sub">新窗口打开导航</div></div>
+  </div>
+  <div class="map-sheet-opt" id="openApple">
+    <div class="ic"></div>
+    <div><div class="tx">苹果地图</div><div class="sub">iOS 设备推荐</div></div>
+  </div>
+  <div class="sheet-actions" style="margin-top:14px;">
+    <button class="btn ghost" id="mapCancelBtn">取消</button>
+  </div>
+</div>
+
+<!-- Connector edit sheet -->
+<div class="sheet" id="connSheet">
+  <div class="sheet-handle"></div>
+  <h3>两地之间</h3>
+  <div class="field">
+    <label>交通方式 / 用时（可选）</label>
+    <input id="fConn" placeholder="例如：打车 15 分钟 / 步行 800 米" />
+  </div>
+  <div class="sheet-actions">
+    <button class="btn ghost" id="connCancelBtn">取消</button>
+    <button class="btn primary" id="connSaveBtn">保存</button>
+  </div>
+</div>
+
+<!-- Share sheet -->
+<div class="sheet" id="shareSheet">
+  <div class="sheet-handle"></div>
+  <h3>分享行程</h3>
+
+  <div class="field" style="margin-bottom:8px;">
+    <label>✏️ 可编辑链接 · 对方可查看并修改</label>
+  </div>
+  <div class="link-box">
+    <span class="url" id="shareUrlEditText"></span>
+    <button id="copyEditLinkBtn">复制</button>
+  </div>
+
+  <div class="field" style="margin-bottom:8px;">
+    <label>👀 只读链接 · 对方只能查看，无法修改</label>
+  </div>
+  <div class="link-box">
+    <span class="url" id="shareUrlViewText"></span>
+    <button id="copyViewLinkBtn">复制</button>
+  </div>
+
+  <div class="share-hint">提醒：只读链接是前端层面的限制（打开后隐藏了所有编辑功能），如果需要更严格地在服务端阻止修改，需要在 InstantDB 后台配置权限规则，需要的话可以再告诉我。</div>
+
+  <div class="share-opt" id="optSystemShare">
+    <div class="ic"></div>
+    <div><div class="tx">系统分享</div><div class="sub">发送可编辑链接到微信 / 短信等App</div></div>
+  </div>
+  <div class="share-opt" id="optCopyText">
+    <div class="ic"></div>
+    <div><div class="tx">复制行程文字</div><div class="sub">含地点与地图链接，适合直接粘贴发送</div></div>
+  </div>
+  <div class="share-opt" id="optExportImg">
+    <div class="ic"></div>
+    <div><div class="tx">导出为图片</div><div class="sub">保存当天行程长图</div></div>
+  </div>
+  <div class="share-opt" id="optExportTxt">
+    <div class="ic"></div>
+    <div><div class="tx">导出为文本文件</div><div class="sub">下载 .txt 行程单</div></div>
+  </div>
+  <div class="sheet-actions" style="margin-top:16px;">
+    <button class="btn ghost" id="shareCancelBtn">关闭</button>
+  </div>
+</div>
+
+<!-- Trips list sheet -->
+<div class="sheet" id="tripsSheet">
+  <div class="sheet-handle"></div>
+  <h3>我的行程 <button class="icon-btn" id="newTripBtn" style="width:32px;height:32px;"></button></h3>
+  <div id="tripsListWrap"></div>
+  <div class="sheet-actions" style="margin-top:14px;">
+    <button class="btn ghost" id="tripsCancelBtn">关闭</button>
+  </div>
+</div>
+
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  // ================= ICONS =================
+  function svg(inner, size){
+    size = size || 16;
+    return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
+  }
+  const ICON = {
+    trash: svg('<polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>'),
+    up: svg('<polyline points="18 15 12 9 6 15"></polyline>', 14),
+    down: svg('<polyline points="6 9 12 15 18 9"></polyline>', 14),
+    sun: svg('<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>', 18),
+    moon: svg('<path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z"></path>', 18),
+    layers: svg('<polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline>', 18),
+    dots: svg('<circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"></circle><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"></circle><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"></circle>', 18),
+    plus: svg('<line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line>', 16),
+    link: svg('<path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.5 1.5"></path><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.5-1.5"></path>', 16),
+    share: svg('<circle cx="18" cy="5" r="2.5"></circle><circle cx="6" cy="12" r="2.5"></circle><circle cx="18" cy="19" r="2.5"></circle><line x1="8.3" y1="10.7" x2="15.7" y2="6.3"></line><line x1="8.3" y1="13.3" x2="15.7" y2="17.7"></line>', 16),
+    copy: svg('<rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>', 16),
+    image: svg('<rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><path d="M21 15l-5-5L5 21"></path>', 16),
+    file: svg('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline>', 16),
+  };
+
+  // ================= APP ID =================
+  const APP_ID = "a5876d37-89de-48d5-a4e0-fd826eeca553";
+  const DB_READY = APP_ID && APP_ID !== "__INSTANT_APP_ID__";
+
+  // ================= Store abstraction =================
+  // Real InstantDB store or a local-only fallback so the page always works for preview.
+  // NOTE: deliberately schemaless (no i.schema()/CLI push required) so where/order
+  // filtering never fails with "field not indexed" errors — filtering/sorting for the
+  // trips list happens on the client instead. Fine at this app's scale.
+  let Store;
+
+  if (DB_READY && window.instant) {
+    const { init, id } = window.instant;
+    const db = init({ appId: APP_ID });
+
+    Store = {
+      mode: 'instant',
+      async getOwnerId(){ return await db.getLocalId('device'); },
+      subscribeMyTrips(ownerId, cb){
+        return db.subscribeQuery(
+          { trips: {} },
+          (resp)=>{
+            if(resp.error){ console.error('InstantDB query error:', resp.error); return; }
+            if(resp.data){
+              const mine = (resp.data.trips||[])
+                .filter(t=>t.owner===ownerId)
+                .sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+              cb(mine);
+            }
+          }
+        );
+      },
+      subscribeTrip(tripId, cb){
+        return db.subscribeQuery(
+          { trips: { $: { where: { id: tripId } } } },
+          (resp)=>{
+            if(resp.error){ console.error('InstantDB query error:', resp.error); return; }
+            if(resp.data) cb((resp.data.trips||[])[0] || null);
+          }
+        );
+      },
+      createTrip(tripId, data){
+        return db.transact(db.tx.trips[tripId].update(data));
+      },
+      updateTrip(tripId, data){
+        return db.transact(db.tx.trips[tripId].update(data));
+      },
+      deleteTrip(tripId){
+        return db.transact(db.tx.trips[tripId].delete());
+      },
+      newId(){ return id(); }
+    };
+  } else {
+    // ---- Local fallback (no network db configured yet) ----
+    const LS_KEY = 'lubook_fallback_trips_v1';
+    function loadAll(){ try{ return JSON.parse(localStorage.getItem(LS_KEY)||'{}'); }catch(e){ return {}; } }
+    function saveAll(all){ try{ localStorage.setItem(LS_KEY, JSON.stringify(all)); }catch(e){} }
+    let listListeners = [];
+    let tripListeners = {}; // tripId -> [cb,...]
+    function notifyList(){
+      const all = loadAll();
+      const arr = Object.values(all).filter(t=>t.owner==='local-owner').sort((a,b)=>b.updatedAt-a.updatedAt);
+      listListeners.forEach(cb=>cb(arr));
+    }
+    function notifyTrip(tripId){
+      const all = loadAll();
+      const t = all[tripId] || null;
+      (tripListeners[tripId]||[]).forEach(cb=>cb(t));
+    }
+    Store = {
+      mode:'local',
+      async getOwnerId(){ return 'local-owner'; },
+      subscribeMyTrips(ownerId, cb){
+        listListeners.push(cb);
+        notifyList();
+        return ()=>{ listListeners = listListeners.filter(x=>x!==cb); };
+      },
+      subscribeTrip(tripId, cb){
+        tripListeners[tripId] = tripListeners[tripId] || [];
+        tripListeners[tripId].push(cb);
+        notifyTrip(tripId);
+        return ()=>{ tripListeners[tripId] = (tripListeners[tripId]||[]).filter(x=>x!==cb); };
+      },
+      createTrip(tripId, data){
+        const all = loadAll();
+        all[tripId] = Object.assign({id:tripId}, data);
+        saveAll(all);
+        notifyTrip(tripId); notifyList();
+      },
+      updateTrip(tripId, data){
+        const all = loadAll();
+        all[tripId] = Object.assign({}, all[tripId], data, {id:tripId});
+        saveAll(all);
+        notifyTrip(tripId); notifyList();
+      },
+      deleteTrip(tripId){
+        const all = loadAll();
+        delete all[tripId];
+        saveAll(all);
+        notifyTrip(tripId); notifyList();
+      },
+      newId(){ return 'lt_' + Math.random().toString(36).slice(2,10); }
+    };
+  }
+
+  // ================= State =================
+  function uid(){ return Math.random().toString(36).slice(2,9); }
+  const EMOJIS = ["📍","🍜","☕","🏛️","🛍️","🌳","🏨","🚗","📸","🎉","⛰️","🏖️"];
+
+  function seedDays(){
+    return [{
+      id: uid(), label:"Day 1",
+      stops:[
+        {id:uid(), name:"断桥残雪", addr:"杭州市西湖区北山街", time:"09:00", note:"人少，适合拍照", emoji:"📸", connNext:"步行 10 分钟"},
+        {id:uid(), name:"楼外楼(孤山路店)", addr:"杭州市西湖区孤山路30号", time:"11:30", note:"西湖醋鱼、东坡肉", emoji:"🍜", connNext:"步行 15 分钟"},
+        {id:uid(), name:"三潭印月", addr:"杭州市西湖区三潭印月", time:"14:00", note:"记得买船票", emoji:"⛰️", connNext:""}
+      ]
+    }];
+  }
+
+  let ownerId = null;
+  let myTrips = [];
+  let currentTripId = null;
+  let currentTripRaw = null;   // raw record from store {id,title,date,daysJson,owner,updatedAt}
+  let trip = null;             // parsed {title,date,days:[...]}
+  let unsubTrip = null;
+  let unsubList = null;
+  let saveTimer = null;
+
+  let editingStopId = null;
+  let selectedEmoji = "📍";
+  let stopSheetDayId = null;
+  let mapTarget = {name:"", addr:""};
+  let connTarget = {dayId:null, index:null};
+  let activeDayId = null;
+  let isViewMode = false;
+
+  const $ = (id)=>document.getElementById(id);
+
+  function currentDay(){
+    if(!trip) return null;
+    return trip.days.find(d=>d.id===activeDayId) || trip.days[0];
+  }
+
+  function parseTrip(raw){
+    let days = [];
+    try{ days = JSON.parse(raw.daysJson || '[]'); }catch(e){ days = []; }
+    if(!days.length) days = seedDays();
+    return { title: raw.title || "", date: raw.date || "", days };
+  }
+
+  // ================= persistence ================
+  function scheduleSaveTrip(){
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(()=>{
+      if(!currentTripId || !trip) return;
+      Store.updateTrip(currentTripId, {
+        title: trip.title,
+        date: trip.date,
+        daysJson: JSON.stringify(trip.days),
+        updatedAt: Date.now()
+      });
+    }, 350);
+  }
+
+  function isOwner(){
+    return currentTripRaw && currentTripRaw.owner === ownerId;
+  }
+
+  // ================= trip switching =================
+  function openTrip(tripId, pushUrl, clearViewMode){
+    if(unsubTrip) { unsubTrip(); unsubTrip = null; }
+    currentTripId = tripId;
+    localStorage.setItem('lubook_last_trip', tripId);
+    if(clearViewMode) isViewMode = false;
+    if(pushUrl){
+      const url = new URL(location.href);
+      url.searchParams.set('trip', tripId);
+      if(clearViewMode) url.searchParams.delete('mode');
+      history.replaceState(null, '', url.toString());
+    }
+    unsubTrip = Store.subscribeTrip(tripId, (raw)=>{
+      if(!raw){ return; }
+      currentTripRaw = raw;
+      trip = parseTrip(raw);
+      if(!activeDayId || !trip.days.find(d=>d.id===activeDayId)){
+        activeDayId = trip.days[0].id;
+      }
+      render();
+    });
+  }
+
+  async function createNewTrip(seed){
+    const newId = Store.newId();
+    const days = seed ? seedDays() : [{id:uid(), label:"Day 1", stops:[]}];
+    const data = {
+      title: seed ? "西湖一日游" : "新的行程",
+      date: seed ? "7月12日" : "",
+      daysJson: JSON.stringify(days),
+      owner: ownerId,
+      updatedAt: Date.now()
+    };
+    await Store.createTrip(newId, data);
+    activeDayId = days[0].id;
+    openTrip(newId, true, true);
+    return newId;
+  }
+
+  // ================= init =================
+  async function init(){
+    if(!DB_READY){
+      $('setupBanner').style.display = 'flex';
+    }
+    ownerId = await Store.getOwnerId();
+
+    unsubList = Store.subscribeMyTrips(ownerId, (list)=>{
+      myTrips = list;
+      renderTripsList();
+      renderDayPills(); // day pill switcher unaffected but keep in sync
+    });
+
+    const params = new URLSearchParams(location.search);
+    const urlTrip = params.get('trip');
+    const lastTrip = localStorage.getItem('lubook_last_trip');
+    isViewMode = params.get('mode') === 'view';
+
+    if(urlTrip){
+      activeDayId = null;
+      openTrip(urlTrip, false);
+    } else if(lastTrip){
+      activeDayId = null;
+      isViewMode = false;
+      openTrip(lastTrip, false);
+    } else {
+      await createNewTrip(true);
+    }
+
+    bindEvents();
+    initTheme();
+  }
+
+  // ================= render =================
+  function escapeHtml(str){
+    return String(str||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
+  function render(){
+    if(!trip) return;
+
+    if(document.activeElement !== $('tripTitle')) $('tripTitle').textContent = trip.title || "";
+    if(document.activeElement !== $('tripDateInput')) $('tripDateInput').value = trip.date || "";
+
+    $('tripTitle').contentEditable = isViewMode ? 'false' : 'true';
+    $('tripDateInput').readOnly = isViewMode;
+    $('addStopBtn').style.display = isViewMode ? 'none' : 'flex';
+
+    if(isViewMode){
+      $('sharedBadgeWrap').innerHTML = `<div class="shared-badge">👀 只读模式，无法编辑</div>`;
+    } else {
+      $('sharedBadgeWrap').innerHTML = (!isOwner() && currentTripRaw) ?
+        `<div class="shared-badge">${ICON.link}通过分享链接查看（可编辑）</div>` : '';
+    }
+
+    renderDayPills();
+
+    const day = currentDay();
+    if(!day) return;
+    if(document.activeElement !== $('dayLabelInput')) $('dayLabelInput').value = day.label;
+    $('dayLabelInput').readOnly = isViewMode;
+    const showDayRemove = trip.days.length>1 && !isViewMode;
+    $('dayRemoveBtn').innerHTML = showDayRemove ? (ICON.trash + ' 删除这天') : '';
+    $('dayRemoveBtn').style.visibility = showDayRemove ? 'visible' : 'hidden';
+
+    const tl = $('timeline');
+    tl.innerHTML = "";
+
+    if(day.stops.length===0){
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.innerHTML = isViewMode
+        ? `<div class="big">🧭</div><div>这一天还没有安排</div>`
+        : `<div class="big">🧭</div><div>这一天还没有安排</div><div class="cta" id="emptyAddBtn">点击「＋ 添加地点」开始规划</div>`;
+      tl.appendChild(empty);
+      const eb = $('emptyAddBtn'); if(eb) eb.onclick = ()=> openStopSheet(day.id, null);
+      return;
+    }
+
+    day.stops.forEach((s,idx)=>{
+      const row = document.createElement('div');
+      row.className = 'stop-row';
+
+      const nodeCol = document.createElement('div');
+      nodeCol.className = 'node-col';
+      const node = document.createElement('div');
+      node.className = 'node' + (idx===0 ? ' n0' : '');
+      node.textContent = idx+1;
+      nodeCol.appendChild(node);
+      if(idx < day.stops.length-1){
+        const rail = document.createElement('div');
+        rail.className = 'rail';
+        nodeCol.appendChild(rail);
+      }
+      row.appendChild(nodeCol);
+
+      const card = document.createElement('div');
+      card.className = 'stop-card';
+      card.innerHTML = `
+        <div class="stop-top">
+          <div class="stop-name-wrap">
+            <span class="stop-emoji">${s.emoji||'📍'}</span>
+            <span class="stop-name">${escapeHtml(s.name||'未命名地点')}</span>
+          </div>
+          ${s.time ? `<span class="stop-time">${escapeHtml(s.time)}</span>` : ''}
+        </div>
+        <div class="stop-addr"><span>📍</span><span class="txt">${escapeHtml(s.addr||s.name||'未填写地址')}</span></div>
+        ${s.note ? `<div class="stop-note">${escapeHtml(s.note)}</div>` : ''}
+        <div class="stop-actions">
+          <button class="map-chip" data-act="map">🗺️ 打开地图</button>
+          ${isViewMode ? '' : `<div class="mini-btns">
+            <button class="mini-btn" data-act="up" ${idx===0?'disabled':''}>${ICON.up}</button>
+            <button class="mini-btn" data-act="down" ${idx===day.stops.length-1?'disabled':''}>${ICON.down}</button>
+            <button class="mini-btn danger" data-act="del" title="删除地点">${ICON.trash}</button>
+          </div>`}
+        </div>
+      `;
+      card.addEventListener('click', (e)=>{
+        const act = e.target.closest('[data-act]');
+        if(!act){ if(!isViewMode) openStopSheet(day.id, s.id); return; }
+        e.stopPropagation();
+        const a = act.dataset.act;
+        if(a==='map'){ openMapSheet(s.name, s.addr); }
+        else if(a==='up'){ moveStop(day.id, s.id, -1); }
+        else if(a==='down'){ moveStop(day.id, s.id, 1); }
+        else if(a==='del'){ deleteStop(day.id, s.id); }
+      });
+      row.appendChild(card);
+      tl.appendChild(row);
+
+      if(idx < day.stops.length-1){
+        const conn = document.createElement('div');
+        conn.className = 'connector';
+        conn.innerHTML = `<span class="connector-text ${s.connNext?'has-val':''}">${s.connNext ? ('🚗 '+escapeHtml(s.connNext)) : (isViewMode?'':'＋ 添加交通方式/用时')}</span>`;
+        if(!isViewMode) conn.onclick = ()=> openConnSheet(day.id, idx);
+        tl.appendChild(conn);
+      }
+    });
+  }
+
+  function renderDayPills(){
+    if(!trip) return;
+    const pillsWrap = $('dayPills');
+    pillsWrap.innerHTML = "";
+    trip.days.forEach((d)=>{
+      const b = document.createElement('button');
+      b.className = 'day-pill' + (d.id===activeDayId ? ' active':'');
+      b.innerHTML = `<span>${escapeHtml(d.label)}</span><span class="cnt">${d.stops.length}</span>`;
+      b.onclick = ()=>{ activeDayId = d.id; render(); };
+      pillsWrap.appendChild(b);
+    });
+    if(!isViewMode){
+      const addPill = document.createElement('button');
+      addPill.className = 'day-pill-add';
+      addPill.textContent = '+';
+      addPill.onclick = addDay;
+      pillsWrap.appendChild(addPill);
+    }
+  }
+
+  function renderTripsList(){
+    const wrap = $('tripsListWrap');
+    if(!wrap) return;
+    if(!myTrips.length){
+      wrap.innerHTML = `<div class="trip-list-empty">还没有创建过行程</div>`;
+      return;
+    }
+    wrap.innerHTML = "";
+    myTrips.forEach(t=>{
+      const row = document.createElement('div');
+      row.className = 'trip-list-row' + (t.id===currentTripId ? ' active':'');
+      const dt = t.updatedAt ? new Date(t.updatedAt).toLocaleDateString('zh-CN', {month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'}) : '';
+      row.innerHTML = `
+        <span class="dot"></span>
+        <div class="info">
+          <div class="t">${escapeHtml(t.title||'未命名行程')}</div>
+          <div class="d">${escapeHtml(t.date||'')}${t.date?' · ':''}更新于 ${dt}</div>
+        </div>
+        <button class="del" data-tid="${t.id}">${ICON.trash}</button>
+      `;
+      row.addEventListener('click', (e)=>{
+        if(e.target.closest('.del')){
+          e.stopPropagation();
+          if(myTrips.length<=1){ toast('至少保留一个行程'); return; }
+          if(!confirm(`删除「${t.title||'这个行程'}」？此操作无法撤销。`)) return;
+          const wasCurrent = t.id===currentTripId;
+          Store.deleteTrip(t.id);
+          if(wasCurrent){
+            const rest = myTrips.filter(x=>x.id!==t.id);
+            if(rest.length) openTrip(rest[0].id, true);
+          }
+          toast('已删除行程');
+          return;
+        }
+        activeDayId = null;
+        openTrip(t.id, true, true);
+        closeSheet('tripsSheet');
+      });
+      wrap.appendChild(row);
+    });
+  }
+
+  // ---------- day ops ----------
+  function addDay(){
+    trip.days.push({ id:uid(), label:`Day ${trip.days.length+1}`, stops:[] });
+    activeDayId = trip.days[trip.days.length-1].id;
+    scheduleSaveTrip(); render();
+  }
+  function removeDay(){
+    if(trip.days.length<=1) return;
+    if(!confirm('删除这一天的所有安排？此操作无法撤销。')) return;
+    trip.days = trip.days.filter(d=>d.id!==activeDayId);
+    activeDayId = trip.days[0].id;
+    scheduleSaveTrip(); render();
+  }
+
+  // ---------- stop ops ----------
+  function moveStop(dayId, stopId, dir){
+    const day = trip.days.find(d=>d.id===dayId);
+    const idx = day.stops.findIndex(s=>s.id===stopId);
+    const ni = idx+dir;
+    if(ni<0 || ni>=day.stops.length) return;
+    const tmp = day.stops[idx];
+    day.stops[idx] = day.stops[ni];
+    day.stops[ni] = tmp;
+    scheduleSaveTrip(); render();
+  }
+  function deleteStop(dayId, stopId){
+    if(!confirm('删除这个地点？')) return;
+    const day = trip.days.find(d=>d.id===dayId);
+    day.stops = day.stops.filter(s=>s.id!==stopId);
+    scheduleSaveTrip(); render();
+    closeSheet('stopSheet');
+  }
+
+  function openStopSheet(dayId, stopId){
+    editingStopId = stopId;
+    const day = trip.days.find(d=>d.id===dayId);
+    let s = {name:"",addr:"",time:"",note:"",emoji:"📍"};
+    if(stopId){ s = day.stops.find(x=>x.id===stopId); }
+    $('stopSheetTitle').textContent = stopId ? '编辑地点' : '添加地点';
+    $('fName').value = s.name||"";
+    $('fAddr').value = s.addr||"";
+    $('fTime').value = s.time||"";
+    $('fNote').value = s.note||"";
+    selectedEmoji = s.emoji || "📍";
+    renderEmojiRow();
+    $('fDeleteBtn').style.display = stopId ? 'flex' : 'none';
+    stopSheetDayId = dayId;
+    openSheet('stopSheet');
+  }
+
+  function renderEmojiRow(){
+    const wrap = $('emojiRow');
+    wrap.innerHTML = "";
+    EMOJIS.forEach(e=>{
+      const b = document.createElement('button');
+      b.className = 'emoji-opt' + (e===selectedEmoji ? ' sel':'');
+      b.type='button';
+      b.textContent = e;
+      b.onclick = ()=>{ selectedEmoji = e; renderEmojiRow(); };
+      wrap.appendChild(b);
+    });
+  }
+
+  function saveStopFromSheet(){
+    const name = $('fName').value.trim();
+    if(!name){ toast('请填写地点名称'); return; }
+    const day = trip.days.find(d=>d.id===stopSheetDayId);
+    const data = {
+      name,
+      addr: $('fAddr').value.trim(),
+      time: $('fTime').value.trim(),
+      note: $('fNote').value.trim(),
+      emoji: selectedEmoji
+    };
+    if(editingStopId){
+      const s = day.stops.find(x=>x.id===editingStopId);
+      Object.assign(s, data);
+    } else {
+      day.stops.push(Object.assign({id:uid(), connNext:""}, data));
+    }
+    scheduleSaveTrip(); render();
+    closeSheet('stopSheet');
+  }
+
+  // ---------- connector ----------
+  function openConnSheet(dayId, index){
+    connTarget = {dayId, index};
+    const day = trip.days.find(d=>d.id===dayId);
+    $('fConn').value = day.stops[index].connNext || "";
+    openSheet('connSheet');
+  }
+  function saveConn(){
+    const day = trip.days.find(d=>d.id===connTarget.dayId);
+    day.stops[connTarget.index].connNext = $('fConn').value.trim();
+    scheduleSaveTrip(); render();
+    closeSheet('connSheet');
+  }
+
+  // ---------- map sheet ----------
+  function openMapSheet(name, addr){
+    mapTarget = { name, addr: addr || name };
+    openSheet('mapSheet');
+  }
+  function gmapsUrl(q){ return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`; }
+  function amapsUrl(q){ return `https://maps.apple.com/?q=${encodeURIComponent(q)}`; }
+
+  // ---------- sheets generic ----------
+  function openSheet(id){
+    $('overlay').classList.add('open');
+    $(id).classList.add('open');
+  }
+  function closeSheet(id){
+    $(id).classList.remove('open');
+    const anyOpen = document.querySelectorAll('.sheet.open').length>0;
+    if(!anyOpen) $('overlay').classList.remove('open');
+  }
+  function closeAllSheets(){
+    document.querySelectorAll('.sheet.open').forEach(s=>s.classList.remove('open'));
+    $('overlay').classList.remove('open');
+  }
+
+  // ---------- toast ----------
+  let toastTimer=null;
+  function toast(msg){
+    const t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=>t.classList.remove('show'), 2200);
+  }
+
+  // ---------- share url ----------
+  function shareUrlEdit(){
+    const url = new URL(location.href);
+    url.search = '';
+    url.searchParams.set('trip', currentTripId);
+    return url.toString();
+  }
+  function shareUrlView(){
+    const url = new URL(location.href);
+    url.search = '';
+    url.searchParams.set('trip', currentTripId);
+    url.searchParams.set('mode', 'view');
+    return url.toString();
+  }
+
+  // ---------- share / export ----------
+  function buildItineraryText(){
+    let lines = [];
+    lines.push(`🧭 ${trip.title || '我的行程'}${trip.date ? '  ·  '+trip.date : ''}`);
+    trip.days.forEach(day=>{
+      lines.push('');
+      lines.push(`【${day.label}】`);
+      day.stops.forEach((s,i)=>{
+        let line = `${i+1}. ${s.emoji||'📍'} ${s.name}`;
+        if(s.time) line += `（${s.time}）`;
+        lines.push(line);
+        if(s.addr) lines.push(`   地址：${s.addr}`);
+        if(s.note) lines.push(`   备注：${s.note}`);
+        lines.push(`   地图：${gmapsUrl(s.addr||s.name)}`);
+        if(s.connNext) lines.push(`   ↓ ${s.connNext}`);
+      });
+    });
+    lines.push('');
+    lines.push(`完整行程/实时协作：${shareUrlEdit()}`);
+    lines.push('由「路书」生成');
+    return lines.join('\n');
+  }
+
+  function copyText(text){
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(()=>toast('已复制')).catch(()=>fallbackCopy(text));
+    } else fallbackCopy(text);
+  }
+  function fallbackCopy(text){
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); toast('已复制'); }catch(e){ toast('复制失败，请手动选择文字'); }
+    document.body.removeChild(ta);
+  }
+
+  function systemShare(){
+    if(navigator.share){
+      navigator.share({ title: trip.title||'我的行程', text: `${trip.title||'我的行程'}${trip.date?'·'+trip.date:''}`, url: shareUrlEdit() }).catch(()=>{});
+    } else {
+      copyText(shareUrlEdit());
+      toast('当前浏览器不支持系统分享，已复制链接');
+    }
+  }
+
+  function exportTxt(){
+    const text = buildItineraryText();
+    const blob = new Blob([text], {type:'text/plain;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = (trip.title||'行程') + '.txt';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast('已导出文本文件');
+  }
+
+  function exportImg(){
+    toast('正在生成图片…');
+    const target = document.getElementById('timelineCapture');
+    if(typeof html2canvas === 'undefined'){ toast('图片导出组件加载失败'); return; }
+    const bg = getComputedStyle(document.body).getPropertyValue('--bg').trim() || '#EEF1F5';
+    html2canvas(target, {backgroundColor:bg, scale:2}).then(canvas=>{
+      canvas.toBlob(blob=>{
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = (trip.title||'行程') + '.png';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        toast('图片已保存');
+      });
+    }).catch(()=>toast('生成图片失败'));
+  }
+
+  // ---------- theme ----------
+  function initTheme(){
+    let t = localStorage.getItem('lubook_theme');
+    if(!t){ t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; }
+    applyTheme(t);
+  }
+  function applyTheme(t){
+    document.documentElement.setAttribute('data-theme', t);
+    localStorage.setItem('lubook_theme', t);
+    $('themeBtn').innerHTML = t==='dark' ? ICON.sun : ICON.moon;
+    const bg = t==='dark' ? '#10131C' : '#EEF1F5';
+    $('themeColorMeta').setAttribute('content', bg);
+  }
+  function toggleTheme(){
+    const cur = document.documentElement.getAttribute('data-theme') || 'light';
+    applyTheme(cur==='dark' ? 'light' : 'dark');
+  }
+
+  // ---------- init icons on static buttons ----------
+  function initStaticIcons(){
+    $('tripsBtn').innerHTML = ICON.layers;
+    $('newTripBtn').innerHTML = ICON.plus;
+    $('newTripBtn').style.background = '#22C55E';
+    $('newTripBtn').style.color = '#fff';
+    $('newTripBtn').style.boxShadow = 'none';
+    $('copyEditLinkBtn').textContent = '复制';
+    $('copyViewLinkBtn').textContent = '复制';
+    $('optSystemShare').querySelector('.ic').innerHTML = ICON.share;
+    $('optCopyText').querySelector('.ic').innerHTML = ICON.copy;
+    $('optExportImg').querySelector('.ic').innerHTML = ICON.image;
+    $('optExportTxt').querySelector('.ic').innerHTML = ICON.file;
+  }
+
+  // ---------- events ----------
+  function bindEvents(){
+    initStaticIcons();
+
+    $('overlay').addEventListener('click', closeAllSheets);
+    $('setupBannerClose').addEventListener('click', ()=>{ $('setupBanner').style.display='none'; });
+
+    $('tripTitle').addEventListener('blur', ()=>{ if(isViewMode || !trip) return; trip.title = $('tripTitle').textContent.trim(); scheduleSaveTrip(); });
+    $('tripTitle').addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); $('tripTitle').blur(); } });
+    $('tripDateInput').addEventListener('input', ()=>{ if(isViewMode || !trip) return; trip.date = $('tripDateInput').value; scheduleSaveTrip(); });
+
+    $('dayLabelInput').addEventListener('input', ()=>{ if(isViewMode || !trip) return; currentDay().label = $('dayLabelInput').value; scheduleSaveTrip(); renderDayPills(); });
+    $('dayRemoveBtn').addEventListener('click', removeDay);
+
+    $('addStopBtn').addEventListener('click', ()=>{
+      if(!trip){ toast('正在加载行程，请稍候再试'); return; }
+      const day = currentDay();
+      if(!day){ toast('正在加载行程，请稍候再试'); return; }
+      openStopSheet(day.id, null);
+    });
+    $('fCancelBtn').addEventListener('click', ()=>closeSheet('stopSheet'));
+    $('fSaveBtn').addEventListener('click', saveStopFromSheet);
+    $('fDeleteBtn').addEventListener('click', ()=>{ if(editingStopId) deleteStop(stopSheetDayId, editingStopId); });
+
+    $('mapCancelBtn').addEventListener('click', ()=>closeSheet('mapSheet'));
+    $('openGoogle').addEventListener('click', ()=>{ window.open(gmapsUrl(mapTarget.addr), '_blank'); closeSheet('mapSheet'); });
+    $('openApple').addEventListener('click', ()=>{ window.open(amapsUrl(mapTarget.addr), '_blank'); closeSheet('mapSheet'); });
+
+    $('connCancelBtn').addEventListener('click', ()=>closeSheet('connSheet'));
+    $('connSaveBtn').addEventListener('click', saveConn);
+
+    $('shareBtn').addEventListener('click', ()=>{
+      if(!trip){ toast('正在加载行程，请稍候再试'); return; }
+      $('shareUrlEditText').textContent = shareUrlEdit();
+      $('shareUrlViewText').textContent = shareUrlView();
+      openSheet('shareSheet');
+    });
+    $('shareCancelBtn').addEventListener('click', ()=>closeSheet('shareSheet'));
+    $('copyEditLinkBtn').addEventListener('click', ()=> copyText(shareUrlEdit()));
+    $('copyViewLinkBtn').addEventListener('click', ()=> copyText(shareUrlView()));
+    $('optSystemShare').addEventListener('click', systemShare);
+    $('optCopyText').addEventListener('click', ()=> copyText(buildItineraryText()));
+    $('optExportImg').addEventListener('click', exportImg);
+    $('optExportTxt').addEventListener('click', exportTxt);
+
+    $('tripsBtn').addEventListener('click', ()=>{ renderTripsList(); openSheet('tripsSheet'); });
+    $('tripsCancelBtn').addEventListener('click', ()=>closeSheet('tripsSheet'));
+    $('newTripBtn').addEventListener('click', ()=>{ createNewTrip(false); closeSheet('tripsSheet'); toast('已新建行程'); });
+
+    $('themeBtn').addEventListener('click', toggleTheme);
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
