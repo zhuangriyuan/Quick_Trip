@@ -15,9 +15,53 @@
 <!-- ============================================================
   InstantDB 已接入：APP_ID 已经写好在下方脚本里
   （const APP_ID = "a5876d37-89de-48d5-a4e0-fd826eeca553";）
-  行程数据会自动同步到你自己的 InstantDB 账号，多设备/多人可实时同步。
+
+  这一版用的是真正的邮箱验证码登录（InstantDB 自带的 Magic Code Auth），
+  不是密码。只有你自己的邮箱登录后才能新建/修改行程，别人就算知道 App ID
+  也写不进去；而且这一版把"别人注册/登录"这条路也彻底堵死了——不是他们
+  用自己邮箱登录后写不进数据，而是他们的邮箱根本无法完成登录本身。
+  需要两步才能生效：
+
+  第一步：去 https://instantdb.com/dash 打开这个 App → Permissions（权限）
+  粘贴下面这段 JSON 保存，把两处 your-email@example.com 都换成你自己会用
+  来登录的真实邮箱（这个规则存在 InstantDB 后台，不会出现在代码/GitHub 里）：
+
+  {
+    "$users": {
+      "allow": {
+        "view": "auth.id == data.id",
+        "create": "data.email == 'your-email@example.com'"
+      }
+    },
+    "trips": {
+      "allow": {
+        "view": "true",
+        "create": "isOwnerAuth",
+        "update": "isOwnerAuth || ruleParams.editKey == data.editSecret",
+        "delete": "isOwnerAuth || ruleParams.editKey == data.editSecret"
+      },
+      "bind": {
+        "isOwnerAuth": "auth.email == 'your-email@example.com'"
+      },
+      "fields": {
+        "editSecret": "isOwnerAuth || ruleParams.editKey == data.editSecret"
+      }
+    }
+  }
+
+  $users 那条规则的意思是：只有邮箱等于你填的那个地址，才允许第一次登录时
+  成功创建账号；别人输入自己的邮箱、就算收到了验证码、填进去也会登录失败
+  （提示会显示 InstantDB 返回的具体原因），因为压根不允许他们的账号被创建。
+
+  第二步：自己打开一次网站首页，会看到登录框，输入同一个邮箱 → 收验证码
+  → 输入验证码登录。登录状态由 InstantDB 记在浏览器里，以后不用重复登录。
+
+  但只要你把"可编辑/只读"分享链接发给朋友，打开那个链接完全不受登录/注册
+  限制影响，可编辑链接能改那一份行程，只读链接只能看——这部分沿用的还是
+  editKey 机制，跟登录是两套独立的门，互不影响。
+
   如果以后要换成另一个 InstantDB App，去 instantdb.com/dash 复制新的
-  App ID，替换掉那一行就行。
+  App ID，替换掉上面那一行，权限规则也要在新 App 里重新配一遍。
 =============================================================== -->
 <script src="https://www.unpkg.com/@instantdb/core@latest/dist/standalone/index.umd.cjs"></script>
 
@@ -77,6 +121,27 @@
     position:relative;
     padding-bottom:110px;
   }
+
+  /* ---------- Lock screen ---------- */
+  #loginScreen{
+    position:fixed; inset:0; z-index:100; background:var(--bg);
+    display:flex; align-items:center; justify-content:center; padding:24px;
+  }
+  .lock-card{ max-width:360px; width:100%; text-align:center; }
+  .lock-mark{
+    width:52px;height:52px;border-radius:16px; margin:0 auto 18px;
+    background:var(--ink); color:var(--accent); display:flex;align-items:center;justify-content:center;
+    font-family:'Outfit',sans-serif; font-weight:800; font-size:24px; box-shadow:var(--shadow-lift);
+  }
+  .lock-title{ font-size:20px; font-weight:700; color:var(--ink); margin-bottom:8px; }
+  .lock-sub{ font-size:13px; color:var(--ink-soft); line-height:1.6; margin-bottom:22px; }
+  #emailForm, #codeForm{ flex-direction:column; }
+  #emailForm input, #codeForm input{
+    width:100%; border:1.5px solid var(--line); border-radius:12px; padding:13px 14px; font-size:15px;
+    text-align:center; letter-spacing:.05em; background:var(--paper); color:var(--ink); outline:none;
+  }
+  #emailForm input:focus, #codeForm input:focus{ border-color:var(--accent); }
+  .lock-error{ color:var(--warn); font-size:12.5px; margin-top:10px; line-height:1.5; }
 
   /* ---------- Setup banner ---------- */
   .setup-banner{
@@ -324,6 +389,28 @@
 </style>
 </head>
 <body>
+
+<div id="loginScreen" style="display:none;">
+  <div class="lock-card">
+    <div class="lock-mark">路</div>
+    <div class="lock-title display">这是我的私人行程</div>
+    <div class="lock-sub" id="loginSub">用邮箱验证码登录后才能查看和新建你的行程。如果你是通过朋友分享的链接打开的，直接用那个链接就行，不需要登录。</div>
+
+    <form id="emailForm" style="display:flex;">
+      <input id="emailInput" type="email" placeholder="输入邮箱" autocomplete="email" required />
+      <div class="lock-error" id="emailError" style="display:none;"></div>
+      <button type="submit" id="emailSubmitBtn" class="btn primary" style="width:100%; margin-top:12px;">发送验证码</button>
+    </form>
+
+    <form id="codeForm" style="display:none;">
+      <input id="codeInput" type="text" inputmode="numeric" placeholder="输入验证码" autocomplete="one-time-code" required />
+      <div class="lock-error" id="codeError" style="display:none;"></div>
+      <button type="submit" id="codeSubmitBtn" class="btn primary" style="width:100%; margin-top:12px;">登录</button>
+      <button type="button" id="backToEmailBtn" class="btn ghost" style="width:100%; margin-top:8px;">换个邮箱</button>
+    </form>
+  </div>
+</div>
+
 <div id="app">
 
   <div class="setup-banner" id="setupBanner" style="display:none;">
@@ -339,7 +426,7 @@
         <div class="name">路书 · 快速行程</div>
       </div>
       <div class="header-actions">
-        <button class="icon-btn" id="tripsBtn" title="我的行程"></button>
+        <button class="icon-btn" id="tripsBtn" title="我的行程" style="display:none;"></button>
         <button class="icon-btn" id="themeBtn" title="切换主题"></button>
       </div>
     </div>
@@ -481,9 +568,11 @@
   <div class="sheet-handle"></div>
   <h3>我的行程 <button class="icon-btn" id="newTripBtn" style="width:32px;height:32px;"></button></h3>
   <div id="tripsListWrap"></div>
+  <div style="font-size:11.5px; color:var(--ink-faint); margin-top:10px;" id="signedInAs"></div>
   <div class="sheet-actions" style="margin-top:14px;">
     <button class="btn ghost" id="tripsCancelBtn">关闭</button>
   </div>
+  <button id="signOutBtn" style="display:none; width:100%; border:none; background:none; color:var(--ink-faint); font-size:12.5px; text-decoration:underline; padding:14px 0 0; cursor:pointer;">退出登录</button>
 </div>
 
 
@@ -532,15 +621,18 @@
 
     Store = {
       mode: 'instant',
-      async getOwnerId(){ return await db.getLocalId('device'); },
-      subscribeMyTrips(ownerId, cb){
+      subscribeAuth(cb){ return db.subscribeAuth(cb); },
+      sendMagicCode(email){ return db.auth.sendMagicCode({ email }); },
+      signInWithMagicCode(email, code){ return db.auth.signInWithMagicCode({ email, code }); },
+      signOut(){ return db.auth.signOut(); },
+      subscribeMyTrips(ownerEmail, cb){
         return db.subscribeQuery(
           { trips: {} },
           (resp)=>{
             if(resp.error){ console.error('InstantDB query error:', resp.error); return; }
             if(resp.data){
               const mine = (resp.data.trips||[])
-                .filter(t=>t.owner===ownerId)
+                .filter(t=>t.owner===ownerEmail)
                 .sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
               cb(mine);
             }
@@ -559,16 +651,19 @@
       createTrip(tripId, data){
         return db.transact(db.tx.trips[tripId].update(data));
       },
-      updateTrip(tripId, data){
-        return db.transact(db.tx.trips[tripId].update(data));
+      updateTrip(tripId, data, editKey){
+        return db.transact(db.tx.trips[tripId].ruleParams({ editKey: editKey || '' }).update(data));
       },
-      deleteTrip(tripId){
-        return db.transact(db.tx.trips[tripId].delete());
+      deleteTrip(tripId, editKey){
+        return db.transact(db.tx.trips[tripId].ruleParams({ editKey: editKey || '' }).delete());
       },
       newId(){ return id(); }
     };
   } else {
     // ---- Local fallback (no network db configured yet) ----
+    // No real auth here — just auto "sign in" as a local preview user so the
+    // app is usable without any setup. Real access control only kicks in once
+    // a real InstantDB App ID + permissions + magic-code auth are wired up.
     const LS_KEY = 'lubook_fallback_trips_v1';
     function loadAll(){ try{ return JSON.parse(localStorage.getItem(LS_KEY)||'{}'); }catch(e){ return {}; } }
     function saveAll(all){ try{ localStorage.setItem(LS_KEY, JSON.stringify(all)); }catch(e){} }
@@ -576,7 +671,7 @@
     let tripListeners = {}; // tripId -> [cb,...]
     function notifyList(){
       const all = loadAll();
-      const arr = Object.values(all).filter(t=>t.owner==='local-owner').sort((a,b)=>b.updatedAt-a.updatedAt);
+      const arr = Object.values(all).filter(t=>t.owner==='local@preview').sort((a,b)=>b.updatedAt-a.updatedAt);
       listListeners.forEach(cb=>cb(arr));
     }
     function notifyTrip(tripId){
@@ -586,8 +681,14 @@
     }
     Store = {
       mode:'local',
-      async getOwnerId(){ return 'local-owner'; },
-      subscribeMyTrips(ownerId, cb){
+      subscribeAuth(cb){
+        setTimeout(()=> cb({ isLoading:false, user:{ id:'local-preview', email:'local@preview' } }), 0);
+        return ()=>{};
+      },
+      sendMagicCode(email){ return Promise.resolve(); },
+      signInWithMagicCode(email, code){ return Promise.resolve({ user:{ id:'local-preview', email:'local@preview' }, created:false }); },
+      signOut(){ return Promise.resolve(); },
+      subscribeMyTrips(ownerEmail, cb){
         listListeners.push(cb);
         notifyList();
         return ()=>{ listListeners = listListeners.filter(x=>x!==cb); };
@@ -604,13 +705,13 @@
         saveAll(all);
         notifyTrip(tripId); notifyList();
       },
-      updateTrip(tripId, data){
+      updateTrip(tripId, data, editKey){
         const all = loadAll();
         all[tripId] = Object.assign({}, all[tripId], data, {id:tripId});
         saveAll(all);
         notifyTrip(tripId); notifyList();
       },
-      deleteTrip(tripId){
+      deleteTrip(tripId, editKey){
         const all = loadAll();
         delete all[tripId];
         saveAll(all);
@@ -622,6 +723,21 @@
 
   // ================= State =================
   function uid(){ return Math.random().toString(36).slice(2,9); }
+  function randomSecret(){
+    if(window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return uid()+uid()+uid();
+  }
+  const EDIT_KEYS_LS = 'lubook_edit_keys';
+  function getEditKey(tripId){
+    try{ const m = JSON.parse(localStorage.getItem(EDIT_KEYS_LS)||'{}'); return m[tripId] || ''; }catch(e){ return ''; }
+  }
+  function setEditKey(tripId, key){
+    try{
+      const m = JSON.parse(localStorage.getItem(EDIT_KEYS_LS)||'{}');
+      m[tripId] = key;
+      localStorage.setItem(EDIT_KEYS_LS, JSON.stringify(m));
+    }catch(e){}
+  }
   const EMOJIS = ["📍","🍜","☕","🏛️","🛍️","🌳","🏨","🚗","📸","🎉","⛰️","🏖️"];
 
   function seedDays(){
@@ -635,7 +751,8 @@
     }];
   }
 
-  let ownerId = null;
+  let authUser = null;   // { id, email } once signed in, else null
+  let ownerId = null;    // == authUser.email once signed in
   let myTrips = [];
   let currentTripId = null;
   let currentTripRaw = null;   // raw record from store {id,title,date,daysJson,owner,updatedAt}
@@ -676,7 +793,7 @@
         date: trip.date,
         daysJson: JSON.stringify(trip.days),
         updatedAt: Date.now()
-      });
+      }, getEditKey(currentTripId));
     }, 350);
   }
 
@@ -685,11 +802,13 @@
   }
 
   // ================= trip switching =================
-  function openTrip(tripId, pushUrl, clearViewMode){
+  let currentForceView = false;
+  function openTrip(tripId, pushUrl, clearViewMode, forceView){
     if(unsubTrip) { unsubTrip(); unsubTrip = null; }
     currentTripId = tripId;
     localStorage.setItem('lubook_last_trip', tripId);
-    if(clearViewMode) isViewMode = false;
+    currentForceView = !!forceView;
+    if(clearViewMode){ isViewMode = false; currentForceView = false; }
     if(pushUrl){
       const url = new URL(location.href);
       url.searchParams.set('trip', tripId);
@@ -703,57 +822,145 @@
       if(!activeDayId || !trip.days.find(d=>d.id===activeDayId)){
         activeDayId = trip.days[0].id;
       }
+      recomputeViewMode();
       render();
     });
+  }
+  // Read-only unless you're logged in as the trip's owner (server checks this
+  // via auth), or this device holds the trip's edit key from a share link
+  // (server checks that via ruleParams) — or the link explicitly asked for
+  // view mode. The UI here just mirrors what the permission rules allow, so
+  // people aren't shown editing controls that would silently fail to save.
+  function recomputeViewMode(){
+    if(!currentTripRaw) return;
+    const ownsIt = !!authUser && currentTripRaw.owner === authUser.email;
+    isViewMode = currentForceView || (!ownsIt && !getEditKey(currentTripId));
   }
 
   async function createNewTrip(seed){
     const newId = Store.newId();
     const days = seed ? seedDays() : [{id:uid(), label:"Day 1", stops:[]}];
+    const editSecret = randomSecret();
     const data = {
       title: seed ? "西湖一日游" : "新的行程",
       date: seed ? "7月12日" : "",
       daysJson: JSON.stringify(days),
       owner: ownerId,
+      editSecret,
       updatedAt: Date.now()
     };
-    await Store.createTrip(newId, data);
+    await Store.createTrip(newId, data); // rejects server-side if auth.email isn't the allowed owner
+    setEditKey(newId, editSecret);
     activeDayId = days[0].id;
     openTrip(newId, true, true);
     return newId;
   }
 
   // ================= init =================
+  let bootDone = false;
+  let bootedRoot = false;
+  let myTripsStarted = false;
+  let urlTripAtLoad = null;
+  let pendingEmail = '';
+
   async function init(){
     if(!DB_READY){
       $('setupBanner').style.display = 'flex';
     }
-    ownerId = await Store.getOwnerId();
-
-    unsubList = Store.subscribeMyTrips(ownerId, (list)=>{
-      myTrips = list;
-      renderTripsList();
-      renderDayPills(); // day pill switcher unaffected but keep in sync
-    });
 
     const params = new URLSearchParams(location.search);
-    const urlTrip = params.get('trip');
-    const lastTrip = localStorage.getItem('lubook_last_trip');
-    isViewMode = params.get('mode') === 'view';
+    urlTripAtLoad = params.get('trip');
 
-    if(urlTrip){
+    if(urlTripAtLoad){
+      // Share-link visit — open right away, no login required at all.
+      // Access to THIS trip is controlled by the edit-key/view-mode mechanism.
+      const urlKey = params.get('key');
+      const forceView = params.get('mode') === 'view';
+      if(urlKey) setEditKey(urlTripAtLoad, urlKey);
       activeDayId = null;
-      openTrip(urlTrip, false);
-    } else if(lastTrip){
+      openTrip(urlTripAtLoad, false, false, forceView);
+      finishBoot();
+    }
+
+    // Always track auth in the background — needed to unlock "我的行程" /
+    // creating new trips, and to drive the login screen on bare visits.
+    Store.subscribeAuth((auth)=>{
+      if(auth.isLoading) return;
+      authUser = auth.user || null;
+      ownerId = authUser ? authUser.email : null;
+
+      if(authUser && !myTripsStarted){
+        myTripsStarted = true;
+        unsubList = Store.subscribeMyTrips(ownerId, (list)=>{
+          myTrips = list;
+          renderTripsList();
+          renderDayPills();
+        });
+      }
+
+      if(currentTripRaw){ recomputeViewMode(); render(); }
+
+      if(!urlTripAtLoad){
+        if(authUser){
+          hideLoginScreen();
+          if(!bootedRoot){
+            bootedRoot = true;
+            bootRoot();
+          }
+        } else {
+          showLoginScreen();
+        }
+      }
+      renderAuthUI();
+    });
+  }
+
+  async function bootRoot(){
+    const lastTrip = localStorage.getItem('lubook_last_trip');
+    if(lastTrip){
       activeDayId = null;
-      isViewMode = false;
       openTrip(lastTrip, false);
     } else {
       await createNewTrip(true);
     }
+    finishBoot();
+  }
 
+  function finishBoot(){
+    if(bootDone) return;
+    bootDone = true;
     bindEvents();
     initTheme();
+  }
+
+  function renderAuthUI(){
+    $('tripsBtn').style.display = authUser ? 'flex' : 'none';
+    $('signOutBtn').style.display = authUser ? 'block' : 'none';
+    $('signedInAs').textContent = authUser ? `当前登录：${authUser.email}` : '';
+  }
+
+  // ================= login screen =================
+  function showLoginScreen(){
+    $('loginScreen').style.display = 'flex';
+    showEmailStep();
+  }
+  function hideLoginScreen(){
+    $('loginScreen').style.display = 'none';
+  }
+  function showEmailStep(){
+    pendingEmail = '';
+    $('emailForm').style.display = 'flex';
+    $('codeForm').style.display = 'none';
+    $('loginSub').textContent = '用邮箱验证码登录后才能查看和新建你的行程。如果你是通过朋友分享的链接打开的，直接用那个链接就行，不需要登录。';
+    $('emailError').style.display = 'none';
+    $('emailInput').value = '';
+  }
+  function showCodeStep(email){
+    $('emailForm').style.display = 'none';
+    $('codeForm').style.display = 'flex';
+    $('loginSub').innerHTML = `验证码已发送到 <strong>${escapeHtml(email)}</strong>，填进去就能登录（没收到可以检查垃圾邮件）。`;
+    $('codeError').style.display = 'none';
+    $('codeInput').value = '';
   }
 
   // ================= render =================
@@ -909,7 +1116,7 @@
           if(myTrips.length<=1){ toast('至少保留一个行程'); return; }
           if(!confirm(`删除「${t.title||'这个行程'}」？此操作无法撤销。`)) return;
           const wasCurrent = t.id===currentTripId;
-          Store.deleteTrip(t.id);
+          Store.deleteTrip(t.id, getEditKey(t.id));
           if(wasCurrent){
             const rest = myTrips.filter(x=>x.id!==t.id);
             if(rest.length) openTrip(rest[0].id, true);
@@ -1061,6 +1268,8 @@
     const url = new URL(location.href);
     url.search = '';
     url.searchParams.set('trip', currentTripId);
+    const key = getEditKey(currentTripId);
+    if(key) url.searchParams.set('key', key);
     return url.toString();
   }
   function shareUrlView(){
@@ -1178,8 +1387,6 @@
 
   // ---------- events ----------
   function bindEvents(){
-    initStaticIcons();
-
     $('overlay').addEventListener('click', closeAllSheets);
     $('setupBannerClose').addEventListener('click', ()=>{ $('setupBanner').style.display='none'; });
 
@@ -1223,11 +1430,65 @@
 
     $('tripsBtn').addEventListener('click', ()=>{ renderTripsList(); openSheet('tripsSheet'); });
     $('tripsCancelBtn').addEventListener('click', ()=>closeSheet('tripsSheet'));
-    $('newTripBtn').addEventListener('click', ()=>{ createNewTrip(false); closeSheet('tripsSheet'); toast('已新建行程'); });
+    $('newTripBtn').addEventListener('click', ()=>{
+      createNewTrip(false)
+        .then(()=>{ closeSheet('tripsSheet'); toast('已新建行程'); })
+        .catch(()=>toast('新建失败：请确认已用你自己的邮箱登录，且权限规则已配置'));
+    });
+    $('signOutBtn').addEventListener('click', ()=>{
+      Store.signOut();
+      closeAllSheets();
+      toast('已退出登录');
+    });
 
     $('themeBtn').addEventListener('click', toggleTheme);
   }
 
+  // Auth form handlers are bound immediately (not gated behind finishBoot/bindEvents)
+  // because the login screen can appear before the rest of the app has booted.
+  function bindAuthEvents(){
+    $('emailForm').addEventListener('submit', (e)=>{
+      e.preventDefault();
+      const email = $('emailInput').value.trim();
+      if(!email) return;
+      $('emailError').style.display = 'none';
+      $('emailSubmitBtn').disabled = true;
+      $('emailSubmitBtn').textContent = '发送中…';
+      Store.sendMagicCode(email).then(()=>{
+        pendingEmail = email;
+        showCodeStep(email);
+      }).catch((err)=>{
+        $('emailError').textContent = '发送失败：' + (err && err.body && err.body.message ? err.body.message : '请稍后重试');
+        $('emailError').style.display = 'block';
+      }).finally(()=>{
+        $('emailSubmitBtn').disabled = false;
+        $('emailSubmitBtn').textContent = '发送验证码';
+      });
+    });
+    $('codeForm').addEventListener('submit', (e)=>{
+      e.preventDefault();
+      const code = $('codeInput').value.trim();
+      if(!code || !pendingEmail) return;
+      $('codeError').style.display = 'none';
+      $('codeSubmitBtn').disabled = true;
+      $('codeSubmitBtn').textContent = '验证中…';
+      Store.signInWithMagicCode(pendingEmail, code).catch((err)=>{
+        $('codeError').textContent = (err && err.body && err.body.message)
+          ? err.body.message
+          : '验证码不对，或者已经过期，请重新输入';
+        $('codeError').style.display = 'block';
+        $('codeInput').value = '';
+      }).finally(()=>{
+        $('codeSubmitBtn').disabled = false;
+        $('codeSubmitBtn').textContent = '登录';
+      });
+      // On success, Store.subscribeAuth's callback fires and hides this screen.
+    });
+    $('backToEmailBtn').addEventListener('click', showEmailStep);
+  }
+
+  initStaticIcons();
+  bindAuthEvents();
   init();
 })();
 </script>
