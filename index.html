@@ -102,13 +102,16 @@
     --shadow-lift: 0 10px 30px rgba(0,0,0,0.5);
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-  html,body{margin:0;padding:0;}
+  html,body{margin:0;padding:0; height:100%;}
   body{
+    position:fixed;
+    inset:0;
+    width:100%;
+    overflow:hidden;
     background:var(--bg);
     color:var(--ink);
     font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-    min-height:100vh;
-    overscroll-behavior-y:none;
+    overscroll-behavior:none;
     transition:background .2s ease, color .2s ease;
   }
   svg{display:block;}
@@ -116,7 +119,10 @@
   #app{
     max-width:480px;
     margin:0 auto;
-    min-height:100vh;
+    height:100%;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior-y:contain;
     background:var(--bg);
     position:relative;
     padding-bottom:110px;
@@ -154,7 +160,7 @@
 
   /* ---------- Header ---------- */
   header{
-    padding:22px 18px 14px;
+    padding:calc(22px + env(safe-area-inset-top)) 18px 14px;
     background:linear-gradient(180deg, var(--bg) 0%, var(--bg) 70%, rgba(238,241,245,0));
     position:sticky; top:0; z-index:20;
   }
@@ -285,7 +291,7 @@
 
   /* ---------- FAB ---------- */
   .fab{
-    position:fixed; left:50%; bottom:24px; transform:translateX(-50%);
+    position:fixed; left:50%; bottom:calc(24px + env(safe-area-inset-bottom)); transform:translateX(-50%);
     max-width:480px; width:calc(100% - 36px);
     display:flex; gap:10px; z-index:30;
   }
@@ -497,7 +503,7 @@
     <div><div class="tx">Google 地图</div><div class="sub">新窗口打开导航</div></div>
   </div>
   <div class="map-sheet-opt" id="openApple">
-    <div class="ic"></div>
+    <div class="ic">🍎</div>
     <div><div class="tx">苹果地图</div><div class="sub">iOS 设备推荐</div></div>
   </div>
   <div class="sheet-actions" style="margin-top:14px;">
