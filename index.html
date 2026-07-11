@@ -560,10 +560,6 @@
     <div class="ic"></div>
     <div><div class="tx">导出为图片</div><div class="sub">保存当天行程长图</div></div>
   </div>
-  <div class="share-opt" id="optExportTxt">
-    <div class="ic"></div>
-    <div><div class="tx">导出为文本文件</div><div class="sub">下载 .txt 行程单</div></div>
-  </div>
   <div class="sheet-actions" style="margin-top:16px;">
     <button class="btn ghost" id="shareCancelBtn">关闭</button>
   </div>
@@ -825,6 +821,11 @@
       if(!raw){ return; }
       currentTripRaw = raw;
       trip = parseTrip(raw);
+      // If the server included editSecret in this response, it means we were
+      // authorized to see it (owner auth, or a matching ruleParams key) — cache
+      // it locally so THIS device can also generate a working edit link later,
+      // even if it wasn't the device that originally created the trip.
+      if(raw.editSecret){ setEditKey(tripId, raw.editSecret); }
       if(!activeDayId || !trip.days.find(d=>d.id===activeDayId)){
         activeDayId = trip.days[0].id;
       }
@@ -1335,16 +1336,6 @@
     }
   }
 
-  function exportTxt(){
-    const text = buildItineraryText();
-    const blob = new Blob([text], {type:'text/plain;charset=utf-8'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = (trip.title||'行程') + '.txt';
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast('已导出文本文件');
-  }
 
   function exportImg(){
     toast('正在生成图片…');
@@ -1393,7 +1384,6 @@
     $('optSystemShare').querySelector('.ic').innerHTML = ICON.share;
     $('optCopyText').querySelector('.ic').innerHTML = ICON.copy;
     $('optExportImg').querySelector('.ic').innerHTML = ICON.image;
-    $('optExportTxt').querySelector('.ic').innerHTML = ICON.file;
   }
 
   // ---------- events ----------
@@ -1437,7 +1427,6 @@
     $('optSystemShare').addEventListener('click', systemShare);
     $('optCopyText').addEventListener('click', ()=> copyText(buildItineraryText()));
     $('optExportImg').addEventListener('click', exportImg);
-    $('optExportTxt').addEventListener('click', exportTxt);
 
     $('tripsBtn').addEventListener('click', ()=>{ renderTripsList(); openSheet('tripsSheet'); });
     $('tripsCancelBtn').addEventListener('click', ()=>closeSheet('tripsSheet'));
