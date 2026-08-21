@@ -63,7 +63,6 @@
   如果以后要换成另一个 InstantDB App，去 instantdb.com/dash 复制新的
   App ID，替换掉上面那一行，权限规则也要在新 App 里重新配一遍。
 =============================================================== -->
-<script src="https://www.unpkg.com/@instantdb/core@latest/dist/standalone/index.umd.cjs"></script>
 
 <style>
   :root{
@@ -571,7 +570,12 @@
   <h3>我的行程 <button class="icon-btn" id="newTripBtn" style="width:32px;height:32px;"></button></h3>
   <div id="tripsListWrap"></div>
   <div style="font-size:11.5px; color:var(--ink-faint); margin-top:10px;" id="signedInAs"></div>
-  <div class="sheet-actions" style="margin-top:14px;">
+  <div class="sheet-actions" style="margin-top:14px; gap:8px;">
+    <button class="btn ghost" id="exportTripsBtn" style="flex:1;">导出备份</button>
+    <button class="btn ghost" id="importTripsBtn" style="flex:1;">导入备份</button>
+    <input type="file" id="importTripsInput" accept="application/json" style="display:none;">
+  </div>
+  <div class="sheet-actions" style="margin-top:8px;">
     <button class="btn ghost" id="tripsCancelBtn">关闭</button>
   </div>
   <button id="signOutBtn" style="display:none; width:100%; border:none; background:none; color:var(--ink-faint); font-size:12.5px; text-decoration:underline; padding:14px 0 0; cursor:pointer;">退出登录</button>
@@ -581,7 +585,12 @@
 <div class="toast" id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script>
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js';
+import { getAuth, onAuthStateChanged, signInWithCustomToken, signOut as firebaseSignOut } from 'https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js';
+import { getFirestore, collection, doc, onSnapshot, setDoc } from 'https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js';
+import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/12.17.1/firebase-functions.js';
+
 (function(){
   "use strict";
 
@@ -606,60 +615,82 @@
     file: svg('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline>', 16),
   };
 
-  // ================= APP ID =================
-  const APP_ID = "a5876d37-89de-48d5-a4e0-fd826eeca553";
-  const DB_READY = APP_ID && APP_ID !== "__INSTANT_APP_ID__";
+  // ================= Firebase config =================
+  // Fill this in from Firebase Console → Project settings → General → Your apps → Web app.
+  const firebaseConfig = {
+    apiKey: "AIzaSyBHLisNNTC31L14iDO9jo6SgTXf7tm2MWU",
+    authDomain: "quicktrip-6ef8f.firebaseapp.com",
+    projectId: "quicktrip-6ef8f",
+    storageBucket: "quicktrip-6ef8f.firebasestorage.app",
+    messagingSenderId: "235832330065",
+    appId: "1:235832330065:web:e7b8550627f63e8e3b3570",
+    measurementId: "G-4C0MSFR8JC",
+  };
+  const DB_READY = firebaseConfig.apiKey && firebaseConfig.apiKey !== "REPLACE_ME";
 
   // ================= Store abstraction =================
-  // Real InstantDB store or a local-only fallback so the page always works for preview.
-  // NOTE: deliberately schemaless (no i.schema()/CLI push required) so where/order
-  // filtering never fails with "field not indexed" errors — filtering/sorting for the
-  // trips list happens on the client instead. Fine at this app's scale.
+  // Real Firebase-backed store, or a local-only fallback so the page always
+  // works for preview without any setup.
   let Store;
 
-  if (DB_READY && window.instant) {
-    const { init, id } = window.instant;
-    const db = init({ appId: APP_ID });
+  if (DB_READY) {
+    const fbApp = initializeApp(firebaseConfig);
+    const fbAuth = getAuth(fbApp);
+    const firestore = getFirestore(fbApp);
+    const fbFunctions = getFunctions(fbApp);
+    const callRequestVerificationCode = httpsCallable(fbFunctions, 'requestVerificationCode');
+    const callVerifyCodeAndSignIn = httpsCallable(fbFunctions, 'verifyCodeAndSignIn');
+    const callDeleteTripWithKey = httpsCallable(fbFunctions, 'deleteTripWithKey');
+
+    let currentUid = null;
 
     Store = {
-      mode: 'instant',
-      subscribeAuth(cb){ return db.subscribeAuth(cb); },
-      sendMagicCode(email){ return db.auth.sendMagicCode({ email }); },
-      signInWithMagicCode(email, code){ return db.auth.signInWithMagicCode({ email, code }); },
-      signOut(){ return db.auth.signOut(); },
+      mode: 'firebase',
+      subscribeAuth(cb){
+        return onAuthStateChanged(fbAuth, (user) => {
+          currentUid = user ? user.uid : null;
+          cb({ isLoading: false, user: user ? { id: user.uid, email: user.email } : null });
+        });
+      },
+      sendMagicCode(email){ return callRequestVerificationCode({ email }); },
+      async signInWithMagicCode(email, code){
+        const result = await callVerifyCodeAndSignIn({ email, code });
+        return signInWithCustomToken(fbAuth, result.data.token);
+      },
+      signOut(){ return firebaseSignOut(fbAuth); },
       subscribeMyTrips(ownerEmail, cb){
-        return db.subscribeQuery(
-          { trips: {} },
-          (resp)=>{
-            if(resp.error){ console.error('InstantDB query error:', resp.error); return; }
-            if(resp.data){
-              const mine = (resp.data.trips||[])
-                .filter(t=>t.owner===ownerEmail)
-                .sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
-              cb(mine);
-            }
-          }
-        );
+        // Trips are publicly readable (share-by-link design — see firestore.rules),
+        // so this fetches the whole collection and filters to "mine" client-side,
+        // same as the original InstantDB version did.
+        return onSnapshot(collection(firestore, 'trips'), (snapshot) => {
+          const all = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+          const mine = all.filter(t=>t.owner===ownerEmail).sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+          cb(mine);
+        }, (error) => console.error('Firestore query error:', error));
       },
       subscribeTrip(tripId, cb){
-        return db.subscribeQuery(
-          { trips: { $: { where: { id: tripId } } } },
-          (resp)=>{
-            if(resp.error){ console.error('InstantDB query error:', resp.error); return; }
-            if(resp.data) cb((resp.data.trips||[])[0] || null);
-          }
-        );
+        return onSnapshot(doc(firestore, 'trips', tripId), (snap) => {
+          cb(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+        }, (error) => console.error('Firestore query error:', error));
       },
       createTrip(tripId, data){
-        return db.transact(db.tx.trips[tripId].update(data));
+        // ownerUid drives the security rule; `owner` (email) stays as-is for the
+        // app's own display/filtering logic.
+        return setDoc(doc(firestore, 'trips', tripId), { ...data, ownerUid: currentUid });
       },
       updateTrip(tripId, data, editKey){
-        return db.transact(db.tx.trips[tripId].ruleParams({ editKey: editKey || '' }).update(data));
+        // The edit-key path (no login) proves itself by re-submitting the trip's
+        // own editSecret unchanged — the security rule checks this matches what's
+        // already stored. Owner writes work regardless of editKey via request.auth.
+        return setDoc(doc(firestore, 'trips', tripId), { ...data, editSecret: editKey || data.editSecret }, { merge: true });
       },
       deleteTrip(tripId, editKey){
-        return db.transact(db.tx.trips[tripId].ruleParams({ editKey: editKey || '' }).delete());
+        // Firestore rules can't inspect a "proof of key" on delete the way they
+        // can on update, so deletion always routes through a Cloud Function that
+        // checks (owner OR correct editKey) server-side with admin access.
+        return callDeleteTripWithKey({ tripId, editKey: editKey || '' });
       },
-      newId(){ return id(); }
+      newId(){ return crypto.randomUUID(); }
     };
   } else {
     // ---- Local fallback (no network db configured yet) ----
@@ -1144,6 +1175,51 @@
     });
   }
 
+  // ---------- export / import ----------
+  function exportTrips(){
+    if(!myTrips.length){ toast('还没有行程可以导出'); return; }
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      trips: myTrips.map(t=>{
+        // Strip ownerUid — it's a per-account internal field, not something
+        // that should travel with the backup (re-stamped on import instead).
+        const { ownerUid, ...rest } = t;
+        return rest;
+      }),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'quicktrip-backup-' + new Date().toISOString().slice(0,10) + '.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 2000);
+  }
+
+  function importTripsFromFile(file){
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      let data;
+      try{ data = JSON.parse(reader.result); }catch(e){ toast('文件格式不对，导入失败'); return; }
+      if(!data || !Array.isArray(data.trips)){ toast('文件内容不完整，导入失败'); return; }
+      if(!confirm(`导入 ${data.trips.length} 个行程？同名 ID 的行程会被覆盖，其余行程不受影响。`)) return;
+      if(!authUser){ toast('请先登录再导入'); return; }
+      Promise.all(data.trips.map(t=>{
+        const tripId = t.id || Store.newId();
+        const { id, ...rest } = t;
+        return Store.createTrip(tripId, { ...rest, owner: authUser.email });
+      })).then(()=>{
+        toast(`已导入 ${data.trips.length} 个行程`);
+      }).catch((e)=>{
+        console.error('import failed', e);
+        toast('导入失败，请重试');
+      });
+    };
+    reader.readAsText(file);
+  }
+
   // ---------- day ops ----------
   function addDay(){
     trip.days.push({ id:uid(), label:`Day ${trip.days.length+1}`, stops:[] });
@@ -1430,6 +1506,13 @@
 
     $('tripsBtn').addEventListener('click', ()=>{ renderTripsList(); openSheet('tripsSheet'); });
     $('tripsCancelBtn').addEventListener('click', ()=>closeSheet('tripsSheet'));
+    $('exportTripsBtn').addEventListener('click', exportTrips);
+    $('importTripsBtn').addEventListener('click', ()=> $('importTripsInput').click());
+    $('importTripsInput').addEventListener('change', (e)=>{
+      const file = e.target.files[0];
+      if(file) importTripsFromFile(file);
+      e.target.value = '';
+    });
     $('newTripBtn').addEventListener('click', ()=>{
       createNewTrip(false)
         .then(()=>{ closeSheet('tripsSheet'); toast('已新建行程'); })
@@ -1458,7 +1541,7 @@
         pendingEmail = email;
         showCodeStep(email);
       }).catch((err)=>{
-        $('emailError').textContent = '发送失败：' + (err && err.body && err.body.message ? err.body.message : '请稍后重试');
+        $('emailError').textContent = '发送失败：' + ((err && err.message) ? err.message : '请稍后重试');
         $('emailError').style.display = 'block';
       }).finally(()=>{
         $('emailSubmitBtn').disabled = false;
@@ -1473,8 +1556,8 @@
       $('codeSubmitBtn').disabled = true;
       $('codeSubmitBtn').textContent = '验证中…';
       Store.signInWithMagicCode(pendingEmail, code).catch((err)=>{
-        $('codeError').textContent = (err && err.body && err.body.message)
-          ? err.body.message
+        $('codeError').textContent = (err && err.message)
+          ? err.message
           : '验证码不对，或者已经过期，请重新输入';
         $('codeError').style.display = 'block';
         $('codeInput').value = '';
